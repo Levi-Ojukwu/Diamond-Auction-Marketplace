@@ -1,15 +1,15 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.20;
+pragma solidity ^0.8.0;
 
 import {LibAppStorage} from "../libraries/LibAppStorage.sol";
 import "@openzeppelin/contracts/token/ERC721/IERC721Receiver.sol";
 import "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
-contract AuctionMarketPlaceFaucet is IERC721Receiver {
+contract AuctionMarketPlaceFaucet {
     LibAppStorage.AppStorage internal l;
 
-    function name() external view returns (string memory) {
+    function name() external pure returns (string memory) {
         return "Auction NFT MarketPlace";
     }
 
@@ -37,87 +37,43 @@ contract AuctionMarketPlaceFaucet is IERC721Receiver {
         );
 
         require(
-            isContract(_addressNFTCollection),
+            LibAppStorage.isContract(_addressNFTCollection),
             "AuctionMarketPlace: invalid NFT Collection address"
         );
 
         if (_category == LibAppStorage.Categories.ERC721) {
-            IERC721 nftCollection = IERC721(_addressNFTCollection);
+            _createERC721Auction(
+                _category,
+                _addressNFTCollection,
+                _addressPaymentToken,
+                _nftTokenId,
+                _endAuction,
+                _minBid
+            );
         }
 
-        if (_category == LibAppStorage.Categories.ERC1155) {
-            IERC1155 nftCollection = IERC1155(_addressNFTCollection);
-        }
-
-        require(
-            nftCollection.ownerOf(_nftTokenId) == msg.sender,
-            "AuctionMarketPlace: not owner of NFT"
-        );
-
-        // check if owner has approved the marketplace to transfer the NFT
-        require(
-            nftCollection.getApproved(_nftTokenId) == address(this),
-            "AuctionMarketPlace: not approved to transfer NFT"
-        );
-
-        // transfer the NFT to the marketplace
-        nftCollection.safeTransferFrom(msg.sender, address(this), _nftTokenId);
-
-        // cast the address to payable
-        address payable currentBidOwner = payable(address(0));
-
-        // create the auction
-        LibAppStorage.Auction memory auction = LibAppStorage.Auction({
-            index: l.index,
-            category: _category,
-            addressNFTCollection: _addressNFTCollection,
-            addressPaymentToken: _addressPaymentToken,
-            nftTokenId: _nftTokenId,
-            auctionCreator: msg.sender,
-            currentBidOwner: currentBidOwner,
-            currentBidPrice: 0,
-            endAuction: _endAuction,
-            bidCount: 0,
-            minBid: _minBid
-        });
-
-        // push the auction to the array
-        LibAppStorage.allAuctions.push(auction);
-
-        // increment the index
-        l.index++;
-
-        // emit the event
-        emit LibAppStorage.AuctionCreated(
-            auction.index,
-            auction.addressNFTCollection,
-            auction.addressPaymentToken,
-            auction.nftTokenId,
-            auction.auctionCreator,
-            auction.endAuction,
-            auction.minBid
-        );
+        // if (_category == LibAppStorage.Categories.ERC1155) {
+        //     IERC1155 nftCollection = IERC1155(_addressNFTCollection);
+        // }
     }
 
     // create function to check if auction is open
-    function isAuctionOpen(uint256 _auctionIndex) external view returns (bool) {
-        return
-            LibAppStorage.allAuctions[_auctionIndex].endAuction >
-            block.timestamp;
+    function isAuctionOpen(uint256 _auctionIndex) internal view returns (bool) {
+        return l.allAuctions[_auctionIndex].endAuction > block.timestamp;
     }
 
     // get current bid price
     function getCurrentBidPrice(
         uint256 _auctionIndex
     ) external view returns (uint256) {
-        return LibAppStorage.allAuctions[_auctionIndex].currentBidPrice;
+        return l.allAuctions[_auctionIndex].currentBidPrice;
     }
 
     // get current bid owner
     function getCurrentBidOwner(
         uint256 _auctionIndex
     ) external view returns (address) {
-        return LibAppStorage.allAuctions[_auctionIndex].currentBidOwner;
+        return l.allAuctions[_auctionIndex].currentBidOwner;
     }
 
     // create function to place bid
@@ -127,11 +83,13 @@ contract AuctionMarketPlaceFaucet is IERC721Receiver {
     ) external returns (bool) {
         // check auction exists
         require(
-            _auctionIndex < LibAppStorage.allAuctions.length,
+            _auctionIndex < l.allAuctions.length,
             "AuctionMarketPlace: auction does not exist"
         );
 
-        Auction storage auction = LibAppStorage.allAuctions[_auctionIndex];
+        LibAppStorage.AuctionDetails storage auction = l.allAuctions[
+            _auctionIndex
+        ];
 
         // check auction is open
         require(
@@ -185,10 +143,10 @@ contract AuctionMarketPlaceFaucet is IERC721Receiver {
             );
 
             uint256 burned = calculateIncentiveBurned(totalFee);
-            uint256 dao = calculateIncentiveDAO(totalFee);
+            //uint256 dao = calculateIncentiveDAO(totalFee);
             uint256 outbid = calculateIncentiveOutbid(totalFee);
-            uint256 team = calculateIncentiveTeam(totalFee);
-            uint256 lastAddress = calculateIncentiveLastAddress(totalFee);
+            //uint256 team = calculateIncentiveTeam(totalFee);
+            //uint256 lastAddress = calculateIncentiveLastAddress(totalFee);
 
             // total amount to debit
             uint256 totalDebit = totalFee + _bidAmount;
@@ -207,17 +165,14 @@ contract AuctionMarketPlaceFaucet is IERC721Receiver {
             );
 
             require(
-                paymentToken.transfer(
-                    auction.currentBidOwner,
-                    auction.totalCredit
-                ),
+                paymentToken.transfer(auction.currentBidOwner, totalCredit),
                 "AuctionMarketPlace: failed to transfer previous bid amount"
             );
 
             // send to other guys
 
             require(
-                paymentToken.transfer(address(0), auction.burned),
+                paymentToken.transfer(address(0), burned),
                 "AuctionMarketPlace: failed to burn"
             );
 
@@ -234,12 +189,7 @@ contract AuctionMarketPlaceFaucet is IERC721Receiver {
         auction.bidCount++;
 
         // emit the event
-        emit LibAppStorage.BidPlaced(
-            _auctionIndex,
-            msg.sender,
-            _bidAmount,
-            auction.currentBidPrice
-        );
+        emit LibAppStorage.BidPlaced(_auctionIndex, msg.sender, _bidAmount);
 
         return true;
     }
@@ -248,11 +198,13 @@ contract AuctionMarketPlaceFaucet is IERC721Receiver {
     function claimNFT(uint256 _auctionIndex) external {
         // check auction exists
         require(
-            _auctionIndex < LibAppStorage.allAuctions.length,
+            _auctionIndex < l.allAuctions.length,
             "AuctionMarketPlace: auction does not exist"
         );
 
-        Auction storage auction = LibAppStorage.allAuctions[_auctionIndex];
+        LibAppStorage.AuctionDetails storage auction = l.allAuctions[
+            _auctionIndex
+        ];
 
         // check auction is closed
         require(
@@ -299,11 +251,13 @@ contract AuctionMarketPlaceFaucet is IERC721Receiver {
     function claimToken(uint256 _auctionIndex) external {
         // check auction exists
         require(
-            _auctionIndex < LibAppStorage.allAuctions.length,
+            _auctionIndex < l.allAuctions.length,
             "AuctionMarketPlace: auction does not exist"
         );
 
-        Auction storage auction = LibAppStorage.allAuctions[_auctionIndex];
+        LibAppStorage.AuctionDetails storage auction = l.allAuctions[
+            _auctionIndex
+        ];
 
         // check auction is closed
         require(
@@ -350,11 +304,13 @@ contract AuctionMarketPlaceFaucet is IERC721Receiver {
     function refund(uint256 _auctionIndex) external {
         // check auction exists
         require(
-            _auctionIndex < LibAppStorage.allAuctions.length,
+            _auctionIndex < l.allAuctions.length,
             "AuctionMarketPlace: auction does not exist"
         );
 
-        Auction storage auction = LibAppStorage.allAuctions[_auctionIndex];
+        LibAppStorage.AuctionDetails storage auction = l.allAuctions[
+            _auctionIndex
+        ];
 
         // check auction is closed
         require(
@@ -404,7 +360,7 @@ contract AuctionMarketPlaceFaucet is IERC721Receiver {
     // 1% is sent to the last address to interact with AUCToken(write calls like transfer,transferFrom,approve,mint etc)
     function calculateIncentiveTotalFee(
         uint256 _highestBid
-    ) external view returns (uint256) {
+    ) internal pure returns (uint256) {
         uint256 totalFee = (_highestBid * 10) / 100;
         return totalFee;
     }
@@ -412,7 +368,7 @@ contract AuctionMarketPlaceFaucet is IERC721Receiver {
     // function to amount to be burned
     function calculateIncentiveBurned(
         uint256 _totalFee
-    ) external view returns (uint256) {
+    ) internal pure returns (uint256) {
         uint256 burned = (_totalFee * 2) / 100;
         return burned;
     }
@@ -420,7 +376,7 @@ contract AuctionMarketPlaceFaucet is IERC721Receiver {
     // function to amount to be sent to dAO address
     function calculateIncentiveDAO(
         uint256 _totalFee
-    ) external view returns (uint256) {
+    ) internal pure returns (uint256) {
         uint256 dao = (_totalFee * 2) / 100;
         return dao;
     }
@@ -428,7 +384,7 @@ contract AuctionMarketPlaceFaucet is IERC721Receiver {
     // function to amount to be sent to outbid bidder
     function calculateIncentiveOutbid(
         uint256 _totalFee
-    ) external view returns (uint256) {
+    ) internal pure returns (uint256) {
         uint256 outbid = (_totalFee * 3) / 100;
         return outbid;
     }
@@ -436,7 +392,7 @@ contract AuctionMarketPlaceFaucet is IERC721Receiver {
     // function to amount to be sent to team wallet
     function calculateIncentiveTeam(
         uint256 _totalFee
-    ) external view returns (uint256) {
+    ) internal pure returns (uint256) {
         uint256 team = (_totalFee * 2) / 100;
         return team;
     }
@@ -444,8 +400,70 @@ contract AuctionMarketPlaceFaucet is IERC721Receiver {
     // function to amount to be sent to last address to interact with AUCToken
     function calculateIncentiveLastAddress(
         uint256 _totalFee
-    ) external view returns (uint256) {
+    ) internal pure returns (uint256) {
         uint256 lastAddress = (_totalFee * 1) / 100;
         return lastAddress;
+    }
+
+    // function to create new auction
+
+    function _createERC721Auction(
+        LibAppStorage.Categories _category,
+        address _addressNFTCollection,
+        address _addressPaymentToken,
+        uint256 _nftTokenId,
+        uint256 _endAuction,
+        uint256 _minBid
+    ) internal {
+        IERC721 nftCollection = IERC721(_addressNFTCollection);
+        require(
+            nftCollection.ownerOf(_nftTokenId) == msg.sender,
+            "AuctionMarketPlace: not owner of NFT"
+        );
+
+        // check if owner has approved the marketplace to transfer the NFT
+        require(
+            nftCollection.getApproved(_nftTokenId) == address(this),
+            "AuctionMarketPlace: not approved to transfer NFT"
+        );
+
+        // transfer the NFT to the marketplace
+        nftCollection.safeTransferFrom(msg.sender, address(this), _nftTokenId);
+
+        // cast the address to payable
+        address payable currentBidOwner = payable(address(0));
+
+        // create the auction
+        LibAppStorage.AuctionDetails memory auction = LibAppStorage
+            .AuctionDetails({
+                index: l.index,
+                category: _category,
+                addressNFTCollection: _addressNFTCollection,
+                addressPaymentToken: _addressPaymentToken,
+                nftTokenId: _nftTokenId,
+                auctionCreator: msg.sender,
+                currentBidOwner: currentBidOwner,
+                currentBidPrice: 0,
+                endAuction: _endAuction,
+                bidCount: 0,
+                minBid: _minBid
+            });
+
+        // push the auction to the array
+        l.allAuctions.push(auction);
+
+        // increment the index
+        l.index++;
+
+        // emit the event
+        emit LibAppStorage.AuctionCreated(
+            auction.index,
+            auction.addressNFTCollection,
+            auction.addressPaymentToken,
+            auction.nftTokenId,
+            auction.auctionCreator,
+            auction.endAuction,
+            auction.minBid
+        );
     }
 }

@@ -15,16 +15,16 @@ contract ERC20Facet {
 
     event Transfer(address indexed _from, address indexed _to, uint256 _value);
 
-    function name() external view returns (string memory) {
-        return l.name;
+    function name() external pure returns (string memory) {
+        return "Auction Token";
     }
 
-    function symbol() external view returns (string memory) {
-        return l.symbol;
+    function symbol() external pure returns (string memory) {
+        return "AUC";
     }
 
-    function decimals() external view returns (uint8) {
-        return l.decimals;
+    function decimals() external pure returns (uint8) {
+        return 18;
     }
 
     function totalSupply() public view returns (uint256) {

@@ -7,7 +7,6 @@ import {LibAppStorage} from "../libraries/LibAppStorage.sol";
 import "@openzeppelin/contracts/utils/Strings.sol";
 import "@openzeppelin/contracts/utils/Base64.sol";
 
-
 contract ERC721Facet {
     LibAppStorage.AppStorage internal l;
 
@@ -27,11 +26,11 @@ contract ERC721Facet {
         bool _approved
     );
 
-    function name() external view returns (string memory) {
+    function name() external pure returns (string memory) {
         return "OnChain NFT";
     }
 
-    function symbol() external view returns (string memory) {
+    function symbol() external pure returns (string memory) {
         return "ONC";
     }
 
@@ -43,15 +42,15 @@ contract ERC721Facet {
         owner = l._owners[_tokenId];
     }
 
-    function approve(address _approved, uint256 _tokenId) external {
+    function approve(address _to, uint256 _tokenId) external {
         require(_to != address(0), "ERC721: Approval to the zero address");
         address owner = l._owners[_tokenId];
         require(
             owner == msg.sender || l._operatorApprovals[owner][msg.sender],
             "ERC721: Not owner or approved to approve"
         );
-        l._tokenApprovals[_tokenId] = _approved;
-        emit Approval(owner, _approved, _tokenId);
+        l._tokenApprovals[_tokenId] = _to;
+        emit Approval(owner, _to, _tokenId);
     }
 
     function getApproved(uint256 _tokenId) external view returns (address) {
@@ -83,10 +82,10 @@ contract ERC721Facet {
     }
 
     function _transfer(address _from, address _to, uint256 _tokenId) internal {
+        address owner = l._owners[_tokenId];
         require(_from == owner, "ERC721: _from is not owner");
         require(_to != address(0), "ERC721: transfer to the zero address");
 
-        address owner = l._owners[_tokenId];
         require(
             owner == msg.sender ||
                 l._tokenApprovals[_tokenId] == msg.sender ||
@@ -158,7 +157,7 @@ contract ERC721Facet {
 
     /// @notice Mints an NFT with a unique tokenURI
     /// @dev Increments the tokenID and mints an NFT with the tokenURI
-    function mint() public payable {
+    function mint(uint256 _tokenIds) public payable {
         require(msg.value >= 1e16, "Not enough mint fee");
         _safeMint(msg.sender, _tokenIds);
         _setTokenURI(_tokenIds, getTokenURI(_tokenIds));
@@ -167,8 +166,8 @@ contract ERC721Facet {
     }
 
     function _safeMint(address _to, uint256 _tokenId) internal {
-        l.owners[_tokenId] = _to;
-        l.balances[_to] = l.balances[_to] + 1;
+        l._owners[_tokenId] = _to;
+        l._balances[_to] = l.balances[_to] + 1;
 
         emit Transfer(address(0), _to, _tokenId);
     }
