@@ -4,14 +4,12 @@ pragma solidity ^0.8.0;
 import {LibAppStorage} from "../libraries/LibAppStorage.sol";
 import "@openzeppelin/contracts/token/ERC721/IERC721Receiver.sol";
 import "@openzeppelin/contracts/token/ERC721/IERC721.sol";
+import "@openzeppelin/contracts/token/ERC1155/IERC1155.sol";
+import "@openzeppelin/contracts/token/ERC1155/IERC1155Receiver.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
-contract AuctionMarketPlaceFaucet {
+contract AuctionMarketPlaceFacet {
     LibAppStorage.AppStorage internal l;
-
-    function name() external pure returns (string memory) {
-        return "Auction NFT MarketPlace";
-    }
 
     function createAuction(
         LibAppStorage.Categories _category,
@@ -19,7 +17,9 @@ contract AuctionMarketPlaceFaucet {
         address _addressPaymentToken,
         uint256 _nftTokenId,
         uint256 _endAuction,
-        uint256 _minBid
+        uint256 _minBid,
+        uint256 _value,
+        bytes calldata _data
     ) external {
         require(
             _category == LibAppStorage.Categories.ERC721 ||
@@ -52,9 +52,18 @@ contract AuctionMarketPlaceFaucet {
             );
         }
 
-        // if (_category == LibAppStorage.Categories.ERC1155) {
-        //     IERC1155 nftCollection = IERC1155(_addressNFTCollection);
-        // }
+        if (_category == LibAppStorage.Categories.ERC1155) {
+            _createERC1155Auction(
+                _category,
+                _addressNFTCollection,
+                _addressPaymentToken,
+                _nftTokenId,
+                _endAuction,
+                _minBid,
+                _value,
+                _data
+            );
+        }
     }
 
     // create function to check if auction is open
@@ -429,6 +438,70 @@ contract AuctionMarketPlaceFaucet {
 
         // transfer the NFT to the marketplace
         nftCollection.safeTransferFrom(msg.sender, address(this), _nftTokenId);
+
+        // cast the address to payable
+        address payable currentBidOwner = payable(address(0));
+
+        // create the auction
+        LibAppStorage.AuctionDetails memory auction = LibAppStorage
+            .AuctionDetails({
+                index: l.index,
+                category: _category,
+                addressNFTCollection: _addressNFTCollection,
+                addressPaymentToken: _addressPaymentToken,
+                nftTokenId: _nftTokenId,
+                auctionCreator: msg.sender,
+                currentBidOwner: currentBidOwner,
+                currentBidPrice: 0,
+                endAuction: _endAuction,
+                bidCount: 0,
+                minBid: _minBid
+            });
+
+        // push the auction to the array
+        l.allAuctions.push(auction);
+
+        // increment the index
+        l.index++;
+
+        // emit the event
+        emit LibAppStorage.AuctionCreated(
+            auction.index,
+            auction.addressNFTCollection,
+            auction.addressPaymentToken,
+            auction.nftTokenId,
+            auction.auctionCreator,
+            auction.endAuction,
+            auction.minBid
+        );
+    }
+
+    function _createERC1155Auction(
+        LibAppStorage.Categories _category,
+        address _addressNFTCollection,
+        address _addressPaymentToken,
+        uint256 _nftTokenId,
+        uint256 _endAuction,
+        uint256 _minBid,
+        uint256 _value,
+        bytes calldata _data
+    ) internal {
+        IERC1155 nftCollection = IERC1155(_addressNFTCollection);
+
+        // check if owner has approved the marketplace to transfer the NFT
+        require(
+            nftCollection.isApprovedForAll(msg.sender, address(this)) == true,
+            "AuctionMarketPlace: not approved to transfer NFT"
+        );
+
+        // transfer the NFT to the marketplace
+        nftCollection.safeTransferFrom(
+            msg.sender,
+            address(this),
+            _nftTokenId,
+            _value,
+            _data
+        );
 
         // cast the address to payable
         address payable currentBidOwner = payable(address(0));

@@ -2,86 +2,72 @@
 pragma solidity ^0.8.0;
 
 import {LibDiamond} from "../libraries/LibDiamond.sol";
-import {LibAppStorage} from "../libraries/LibAppStorage.sol";
+// import {LibAppStorage} from "../libraries/LibAppStorage.sol";
+import {LibERC20} from "../libraries/LibERC20.sol";
 
 contract ERC20Facet {
-    LibAppStorage.AppStorage internal l;
+    LibERC20.Storage internal l;
 
-    event Approval(
-        address indexed _owner,
-        address indexed _spender,
-        uint256 _value
-    );
-
-    event Transfer(address indexed _from, address indexed _to, uint256 _value);
-
-    function name() external pure returns (string memory) {
+    function erc20name() external pure returns (string memory) {
         return "Auction Token";
     }
 
-    function symbol() external pure returns (string memory) {
+    function erc20symbol() external pure returns (string memory) {
         return "AUC";
     }
 
-    function decimals() external pure returns (uint8) {
+    function erc20decimals() external pure returns (uint8) {
         return 18;
     }
 
-    function totalSupply() public view returns (uint256) {
-        return l.totalSupply;
+    function erc20totalSupply() public view returns (uint256) {
+        return l._totalSupply;
     }
 
-    function balanceOf(address _owner) public view returns (uint256 balance) {
-        balance = l.balances[_owner];
+    function erc20balanceOf(
+        address _owner
+    ) public view returns (uint256 balance) {
+        balance = l._balances[_owner];
     }
 
-    function transfer(
+    function erc20transfer(
         address _to,
         uint256 _value
     ) public returns (bool success) {
-        LibAppStorage._transferFrom(msg.sender, _to, _value);
+        LibERC20.erc20transfer(_to, _value);
         success = true;
     }
 
-    function transferFrom(
+    function erc20transferFrom(
         address _from,
         address _to,
         uint256 _value
     ) public returns (bool success) {
-        uint256 l_allowance = l.allowances[_from][msg.sender];
-        if (msg.sender == _from || l.allowances[_from][msg.sender] >= _value) {
-            l.allowances[_from][msg.sender] = l_allowance - _value;
-            LibAppStorage._transferFrom(_from, _to, _value);
-
-            emit Approval(_from, msg.sender, l_allowance - _value);
-
-            success = true;
-        } else {
-            revert("ERC20: Not enough allowance to transfer");
-        }
+        address spender = _msgSender();
+        return LibERC20.erc20transferFrom(spender, _from, _to, _value);
     }
 
-    function approve(
-        address _spender,
-        uint256 _value
-    ) public returns (bool success) {
-        l.allowances[msg.sender][_spender] = _value;
-        emit Approval(msg.sender, _spender, _value);
-        success = true;
+    function erc20approve(address spender, uint256 amount) external {
+        address owner = _msgSender();
+        LibERC20.erc20approve(owner, spender, amount);
     }
 
-    function allowance(
+    function erc20allowance(
         address _owner,
         address _spender
     ) public view returns (uint256 remaining_) {
-        remaining_ = l.allowances[_owner][_spender];
+        remaining_ = LibERC20._erc20allowance(_owner, _spender);
     }
 
-    function mintTo(address _user) external {
+    function erc20mint() external {
+        LibDiamond.DiamondStorage storage d = LibDiamond.diamondStorage();
+        address to = d.contractOwner;
         LibDiamond.enforceIsContractOwner();
         uint256 amount = 100_000_000e18;
-        l.balances[_user] += amount;
-        l.totalSupply += uint96(amount);
-        emit Transfer(address(0), _user, amount);
+        LibERC20.erc20mint(to, amount);
+    }
+
+    function _msgSender() private view returns (address) {
+        return msg.sender;
     }
 }
